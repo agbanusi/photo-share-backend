@@ -1,10 +1,14 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Group } from '../groups/entities/group.entity';
 import { User } from '../auth/entities/user.entity';
 import { Photo } from '../media/entities/photo.entity';
-import { MediaService } from '../media/services/media.service';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class AdminService {
@@ -40,7 +44,7 @@ export class AdminService {
     return this.userRepository.find();
   }
 
-  async deleteGroup(groupId: string, userId: string): Promise<void> {
+  async deleteGroup(groupId: string, userId: string): Promise<any> {
     // Verify the user is an admin
     const user = await this.userRepository.findOne({ where: { id: userId } });
 
@@ -53,17 +57,19 @@ export class AdminService {
     });
 
     if (!group) {
-      return;
+      throw new NotFoundException('Group not found');
     }
 
     // Delete all photos in the group
     await this.mediaService.deleteGroupPhotos(groupId);
 
     // Delete the group
-    await this.groupRepository.remove(group);
+    await this.groupRepository.delete({ id: groupId });
+
+    return { message: 'success' };
   }
 
-  async deleteUser(targetUserId: string, adminUserId: string): Promise<void> {
+  async deleteUser(targetUserId: string, adminUserId: string): Promise<any> {
     // Verify the user is an admin
     const adminUser = await this.userRepository.findOne({
       where: { id: adminUserId },
@@ -79,7 +85,7 @@ export class AdminService {
     });
 
     if (!userToDelete) {
-      return;
+      throw new NotFoundException('Group not found');
     }
 
     // Don't allow deleting another admin
@@ -89,6 +95,8 @@ export class AdminService {
 
     // Delete user
     await this.userRepository.remove(userToDelete);
+
+    return { message: 'success' };
   }
 
   async getSystemStats(userId: string): Promise<any> {

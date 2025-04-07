@@ -5,13 +5,13 @@ import { Group } from '../groups/entities/group.entity';
 import { S3Service } from './s3.service';
 import { MediaService } from './media.service';
 import { MediaController } from './media.controller';
-import { AuthModule } from '../auth/auth.module';
-import { GroupsModule } from '../groups/groups.module';
-
+import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
+import { GroupsService } from 'src/groups/groups.service';
+import { AuthModule } from 'src/auth/auth.module';
 @Module({
-  imports: [TypeOrmModule.forFeature([Photo, Group]), AuthModule, GroupsModule],
+  imports: [TypeOrmModule.forFeature([Photo, Group]), AuthModule],
   controllers: [MediaController],
-  providers: [S3Service, MediaService],
-  exports: [TypeOrmModule, S3Service, MediaService],
+  providers: [S3Service, MediaService, RabbitMQService, GroupsService],
+  exports: [S3Service, MediaService],
 })
 export class MediaModule {}

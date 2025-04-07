@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,24 +11,65 @@ import { ConfigService } from '@nestjs/config';
 import { Photo } from './entities/photo.entity';
 import { Group } from '../groups/entities/group.entity';
 import { UploadPhotoDto } from './dto/upload-photo.dto';
+import { EditPhotoDto } from './dto/edit-photo.dto';
 import { S3Service } from './s3.service';
+import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 
 @Injectable()
 export class MediaService {
+  // Define allowed image types and extensions
+  private readonly ALLOWED_MIME_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ];
+
+  private readonly ALLOWED_EXTENSIONS = [
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'heic',
+    'heif',
+  ];
+
   constructor(
     @InjectRepository(Photo)
     private photoRepository: Repository<Photo>,
     @InjectRepository(Group)
     private groupRepository: Repository<Group>,
     private s3Service: S3Service,
-    private configService: ConfigService,
+    private rabbitMQService: RabbitMQService,
   ) {}
 
+  /**
+   * Validates if the file is an acceptable image
+   */
+  private validateImageFile(file: Express.Multer.File): boolean {
+    // Check MIME type
+    if (!this.ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return false;
+    }
+
+    // Check file extension
+    const filenameParts = file.originalname.split('.');
+    const extension = filenameParts[filenameParts.length - 1].toLowerCase();
+    if (!this.ALLOWED_EXTENSIONS.includes(extension)) {
+      return false;
+    }
+
+    return true;
+  }
+
   async uploadPhoto(
-    file: Express.Multer.File,
+    files: Express.Multer.File[],
     uploadPhotoDto: UploadPhotoDto,
     userId: string,
-  ): Promise<Photo> {
+  ): Promise<Photo[]> {
     // Check if group exists and user is a member
     const group = await this.groupRepository.findOne({
       where: { id: uploadPhotoDto.groupId },
@@ -50,21 +92,37 @@ export class MediaService {
       );
     }
 
-    // Upload to S3
-    const { key, url } = await this.s3Service.uploadPhoto(file, group.id);
+    // Validate files - ensure they are images with allowed extensions
+    const invalidFiles = files.filter((file) => !this.validateImageFile(file));
+    if (invalidFiles.length > 0) {
+      const invalidFilenames = invalidFiles
+        .map((f) => f.originalname)
+        .join(', ');
+      throw new BadRequestException(
+        `Invalid file type(s). Only ${this.ALLOWED_EXTENSIONS.join(', ')} image formats are allowed. Invalid files: ${invalidFilenames}`,
+      );
+    }
 
-    // Create photo record
-    const photo = this.photoRepository.create({
-      filename: key,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-      s3Key: key,
-      uploaderId: userId,
-      groupId: group.id,
+    // Upload all files to S3 and create records
+    const uploadPromises = files.map(async (file) => {
+      // Upload to S3
+      const { key, url } = await this.s3Service.uploadPhoto(file, group.id);
+
+      // Create photo record
+      const photo = this.photoRepository.create({
+        filename: key,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        s3Key: key,
+        uploaderId: userId,
+        groupId: group.id,
+      });
+
+      return this.photoRepository.save(photo);
     });
 
-    return this.photoRepository.save(photo);
+    return Promise.all(uploadPromises);
   }
 
   async editPhotoWithAI(
@@ -102,27 +160,36 @@ export class MediaService {
     }
 
     try {
-      // Send edit request to AI service
-      const editedImageKey = await this.rabbitMQService.sendImageEditRequest(
+      // Generate a temporary image key for the edited version
+      // This will be updated by the consumer when the AI service completes
+      const tempEditedImageKey = `temp_edited_${photo.s3Key}`;
+
+      // Create new photo record for the edited version
+      const editedPhoto = new Photo();
+      editedPhoto.filename = tempEditedImageKey;
+      editedPhoto.originalName = `edited_${photo.originalName}`;
+      editedPhoto.mimeType = photo.mimeType;
+      editedPhoto.size = 0; // Size will be updated when we get the file
+      editedPhoto.s3Key = tempEditedImageKey;
+      editedPhoto.uploaderId = userId;
+      editedPhoto.groupId = group.id;
+      editedPhoto.isEdited = true;
+      editedPhoto.originalPhotoId = photo.id;
+
+      // Save the edited photo record first
+      const savedEditedPhoto = await this.photoRepository.save(editedPhoto);
+
+      // Now send the edit request to the AI service
+      // The RabbitMQ consumer will update this record when processing is complete
+      await this.rabbitMQService.sendImageEditRequest(
         photo.s3Key,
         editPhotoDto.prompt,
         userId,
+        photo.id,
+        savedEditedPhoto.id,
       );
 
-      // Create new photo record for the edited version
-      const editedPhoto = this.photoRepository.create({
-        filename: editedImageKey,
-        originalName: `edited_${photo.originalName}`,
-        mimeType: photo.mimeType,
-        size: 0, // Size will be updated when we get the file
-        s3Key: editedImageKey,
-        uploaderId: userId,
-        groupId: group.id,
-        isEdited: true,
-        originalPhotoId: photo.id,
-      });
-
-      return this.photoRepository.save(editedPhoto);
+      return savedEditedPhoto;
     } catch (error) {
       throw new Error(`Failed to edit photo: ${error.message}`);
     }
@@ -265,5 +332,61 @@ export class MediaService {
     }
 
     await this.photoRepository.remove(photos);
+  }
+
+  /**
+   * Process AI edit response from the queue
+   * This is called by the RabbitMQ service when a response is received
+   */
+  async processAIEditResponse(response: {
+    success: boolean;
+    editedImageKey: string;
+    originalPhotoId: string;
+    error?: string;
+    size?: number;
+  }): Promise<void> {
+    if (!response.success) {
+      throw new Error(`AI processing failed: ${response.error}`);
+    }
+
+    try {
+      // Find the original photo
+      const originalPhoto = await this.photoRepository.findOne({
+        where: { id: response.originalPhotoId },
+      });
+
+      if (!originalPhoto) {
+        throw new Error(
+          `Original photo not found: ${response.originalPhotoId}`,
+        );
+      }
+
+      // Find the edited photo that was created during the initial request
+      const editedPhoto = await this.photoRepository.findOne({
+        where: {
+          originalPhotoId: response.originalPhotoId,
+          isEdited: true,
+        },
+      });
+
+      if (!editedPhoto) {
+        throw new Error(
+          `Edited photo not found for original: ${response.originalPhotoId}`,
+        );
+      }
+
+      // Update the edited photo with the actual data
+      editedPhoto.s3Key = response.editedImageKey;
+      editedPhoto.filename =
+        response.editedImageKey.split('/').pop() || editedPhoto.filename;
+      editedPhoto.size = response.size || 0;
+
+      await this.photoRepository.save(editedPhoto);
+
+      // Soft delete the original photo
+      await this.photoRepository.softDelete(originalPhoto.id);
+    } catch (error) {
+      throw new Error(`Failed to process AI response: ${error.message}`);
+    }
   }
 }

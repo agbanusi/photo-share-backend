@@ -10,7 +10,7 @@ import {
   UseInterceptors,
   Body,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MediaService } from './media.service';
 import { UploadPhotoDto } from './dto/upload-photo.dto';
@@ -21,9 +21,9 @@ export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FilesInterceptor('files', 10))
   uploadPhoto(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: Express.Multer.File[],
     @Body() uploadPhotoDto: UploadPhotoDto,
     @Req() req,
   ) {

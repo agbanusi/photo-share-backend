@@ -1,22 +1,38 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { databaseConfig } from './config/database.config';
 import { AuthModule } from './auth/auth.module';
 import { GroupsModule } from './groups/groups.module';
 import { MediaModule } from './media/media.module';
 import { AdminModule } from './admin/admin.module';
-
+import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_EXPIRATION'),
+        },
+      }),
+    }),
+    EventEmitterModule.forRoot(),
     TypeOrmModule.forRoot(databaseConfig),
+    RabbitMQModule,
     AuthModule,
+    AdminModule,
     GroupsModule,
     MediaModule,
-    AdminModule,
   ],
 })
 export class AppModule {}

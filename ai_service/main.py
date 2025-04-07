@@ -92,10 +92,10 @@ def callback(ch, method, properties, body):
     try:
         # Parse message
         message = json.loads(body)
-        correlation_id = properties.correlation_id
+        correlation_id = message.get('correlationId') or properties.correlation_id
         
         # Extract the image key and prompt
-        s3_key = message.get('imageKey') or message.get('s3_key')
+        s3_key = message.get('s3Key') or message.get('s3_key')
         prompt = message.get('prompt', '')
         
         if not s3_key or not prompt:
@@ -112,14 +112,19 @@ def callback(ch, method, properties, body):
         edited_image_data = process_image(image_data, prompt)
         
         # Upload edited image to S3
-        new_key = f"edited/{s3_key}"
+        new_key = f"temp_edited_{s3_key}"
         upload_to_s3(edited_image_data, new_key)
+
         
         # Send response back
         response = {
             'success': True,
             'correlationId': correlation_id,
-            'editedImageKey': new_key
+            'editedImageKey': new_key,
+            'originalPhotoId': message.get('photoId'),
+            'editPhotoId': message.get('editPhotoId'),
+            'error': None,
+            'size': len(edited_image_data)
         }
         
         ch.basic_publish(
@@ -136,8 +141,12 @@ def callback(ch, method, properties, body):
         print(f"Error processing message: {str(e)}")
         error_response = {
             'success': False,
-            'correlationId': properties.correlation_id,
-            'error': str(e)
+            'correlationId': correlation_id,
+            'editedImageKey': new_key,
+            'originalPhotoId': message.get('photoId'),
+            'editPhotoId': message.get('editPhotoId'),
+            'error': str(e),
+            'size': len(edited_image_data)
         }
         ch.basic_publish(
             exchange='',

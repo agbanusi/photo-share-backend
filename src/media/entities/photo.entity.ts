@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Group } from '../../groups/entities/group.entity';
 
@@ -37,9 +38,21 @@ export class Photo {
   @Column()
   groupId: string;
 
+  @Column({ default: false })
+  isEdited: boolean;
+
+  @Column({ nullable: true })
+  originalPhotoId: string;
+
+  @ManyToOne(() => Photo, { nullable: true })
+  originalPhoto: Photo;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt: Date;
 }

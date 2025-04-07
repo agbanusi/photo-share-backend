@@ -7,17 +7,25 @@ import { GroupsService } from './groups.service';
 import { GroupsController } from './groups.controller';
 import { GroupCleanupService } from './group-cleanup.service';
 import { AuthModule } from '../auth/auth.module';
-import { MediaModule } from '../media/media.module';
+import { MediaService } from 'src/media/media.service';
+import { Photo } from 'src/media/entities/photo.entity';
+import { S3Service } from 'src/media/s3.service';
+import { RabbitMQService } from 'src/rabbitmq/rabbitmq.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Group]),
+    TypeOrmModule.forFeature([Photo, Group]),
     ScheduleModule.forRoot(),
     AuthModule,
-    MediaModule,
   ],
   controllers: [GroupsController],
-  providers: [GroupsService, GroupCleanupService],
-  exports: [TypeOrmModule, GroupsService],
+  providers: [
+    GroupsService,
+    GroupCleanupService,
+    MediaService,
+    S3Service,
+    RabbitMQService,
+  ],
+  exports: [GroupsService],
 })
 export class GroupsModule {}
