@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { MediaService } from 'src/media/media.service';
 import { RabbitMQService } from './rabbitmq.service';
 
 @Module({

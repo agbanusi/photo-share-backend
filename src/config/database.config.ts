@@ -1,16 +1,19 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { config } from 'dotenv';
+import { ConfigService } from '@nestjs/config';
 
-config();
-
-export const databaseConfig: TypeOrmModuleOptions = {
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
-  username: process.env.DB_USERNAME || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'photo_share',
-  entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-  synchronize: process.env.NODE_ENV !== 'production',
-  logging: process.env.NODE_ENV !== 'production',
+// Export a factory function instead of direct config object
+export const getDatabaseConfig = (
+  configService: ConfigService,
+): TypeOrmModuleOptions => {
+  return {
+    type: 'postgres',
+    host: configService.get<string>('MAIN_DB_HOST', '127.0.0.1'),
+    port: configService.get<number>('MAIN_DB_PORT', 5432),
+    username: configService.get<string>('MAIN_DB_USERNAME', 'postgres'),
+    password: configService.get<string>('MAIN_DB_PASSWORD', 'password'),
+    database: configService.get<string>('MAIN_DB_NAME', 'photo_share'),
+    entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+    synchronize: configService.get<string>('NODE_ENV') !== 'production',
+    logging: configService.get<string>('NODE_ENV') !== 'production',
+  };
 };
