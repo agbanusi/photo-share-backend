@@ -11,13 +11,14 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-
+import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   async register(
@@ -34,10 +35,15 @@ export class AuthService {
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const firstName = registerDto.name.split(' ')[0];
+    const lastName = registerDto.name.split(' ')[1];
+    delete registerDto.name;
 
     // Create new user
     const user = this.userRepository.create({
       ...registerDto,
+      firstName,
+      lastName,
       password: hashedPassword,
     });
 
@@ -88,7 +94,9 @@ export class AuthService {
       isAdmin: user.isAdmin,
     };
 
-    return this.jwtService.sign(payload);
+    return this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+    });
   }
 
   async validateUser(id: string): Promise<User> {

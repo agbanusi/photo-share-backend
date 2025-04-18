@@ -20,7 +20,7 @@ s3_client = boto3.client(
 )
 
 # RabbitMQ configuration
-RABBITMQ_URL = os.getenv('RABBITMQ_URL')
+RABBITMQ_URL = os.getenv('RABBITMQ_URL', 'amqps://szvpzsbp:URi_0kE-gsxxlD8_R5nqWMbMYOcY14C_@campbell.lmq.cloudamqp.com/szvpzsbp')
 RABBITMQ_USERNAME = os.getenv('RABBITMQ_USERNAME')
 RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD')
 
@@ -165,10 +165,8 @@ def main():
     try:
         # Connect to RabbitMQ
         credentials = pika.PlainCredentials(RABBITMQ_USERNAME, RABBITMQ_PASSWORD)
-        parameters = pika.ConnectionParameters(
-            host=RABBITMQ_URL.split('//')[1] if '//' in RABBITMQ_URL else RABBITMQ_URL,
-            credentials=credentials
-        )
+        parameters = pika.URLParameters(RABBITMQ_URL)
+        parameters.credentials = credentials
         
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()

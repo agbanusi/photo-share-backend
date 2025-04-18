@@ -18,15 +18,11 @@ import { JwtModule } from '@nestjs/jwt';
       envFilePath: '.env',
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION'),
-        },
-      }),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: {
+        expiresIn: process.env.JWT_EXPIRATION,
+      },
     }),
     EventEmitterModule.forRoot(),
     TypeOrmModule.forRootAsync({

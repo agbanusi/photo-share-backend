@@ -9,8 +9,5 @@ export class RegisterDto {
   password: string;
 
   @IsNotEmpty()
-  firstName: string;
-
-  @IsNotEmpty()
-  lastName: string;
+  name: string;
 }

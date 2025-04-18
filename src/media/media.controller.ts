@@ -9,6 +9,7 @@ import {
   UploadedFile,
   UseInterceptors,
   Body,
+  UploadedFiles,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,11 +24,11 @@ export class MediaController {
   @Post('upload')
   @UseInterceptors(FilesInterceptor('files', 10))
   uploadPhoto(
-    @UploadedFile() file: Express.Multer.File[],
+    @UploadedFiles() files: Express.Multer.File[],
     @Body() uploadPhotoDto: UploadPhotoDto,
     @Req() req,
   ) {
-    return this.mediaService.uploadPhoto(file, uploadPhotoDto, req.user.id);
+    return this.mediaService.uploadPhoto(files, uploadPhotoDto, req.user.id);
   }
 
   @Get('group/:groupId')
