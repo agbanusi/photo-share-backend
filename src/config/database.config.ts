@@ -14,6 +14,6 @@ export const getDatabaseConfig = (
     database: configService.get<string>('MAIN_DB_NAME', 'photo_share'),
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     synchronize: configService.get<string>('NODE_ENV') !== 'production',
-    logging: configService.get<string>('NODE_ENV') !== 'production',
+    logging: false, //configService.get<string>('NODE_ENV') !== 'production',
   };
 };
